@@ -5,6 +5,7 @@ import logging
 import os
 import ssl
 import uuid
+import numpy as np
 
 import cv2
 from aiohttp import web
@@ -17,11 +18,13 @@ ROOT = os.path.dirname(__file__)
 logger = logging.getLogger("pc")
 pcs = set()
 relay = MediaRelay()
-
+# モデルファイルのパス
+prototxt_path = os.path.join(ROOT, "deploy.prototxt")
+model_path = os.path.join(ROOT, "res10_300x300_ssd_iter_140000_fp16.caffemodel")
 
 class VideoTransformTrack(MediaStreamTrack):
     """
-    A video stream track that transforms frames from an another track.
+    A video stream track that transforms frames from another track.
     """
 
     kind = "video"
@@ -33,9 +36,49 @@ class VideoTransformTrack(MediaStreamTrack):
 
     async def recv(self):
         frame = await self.track.recv()
+        img = frame.to_ndarray(format="bgr24")
 
-        if self.transform == "cartoon":
-            img = frame.to_ndarray(format="bgr24")
+        if self.transform == "Faces":
+            weights = os.path.join(ROOT, "yunet_n_640_640.onnx")
+            face_detector = cv2.FaceDetectorYN_create(weights, "", (0, 0))
+            # 画像が3チャンネル以外の場合は3チャンネルに変換する
+            channels = 1 if len(img.shape) == 2 else img.shape[2]
+            if channels == 1:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            if channels == 4:
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+            # 入力サイズを指定する
+            height, width, _ = img.shape
+            face_detector.setInputSize((width, height))
+
+            # 顔を検出する
+            _, faces = face_detector.detect(img)
+            faces = faces if faces is not None else []
+
+            for face in faces:
+                # バウンディングボックス
+                box = list(map(int, face[:4]))
+                color = (0, 0, 255)
+                thickness = 2
+                cv2.rectangle(img, box, color, thickness, cv2.LINE_AA)
+
+                # ランドマーク（右目、左目、鼻、右口角、左口角）
+                landmarks = list(map(int, face[4:len(face)-1]))
+                landmarks = np.array_split(landmarks, len(landmarks) / 2)
+                for landmark in landmarks:
+                    radius = 5
+                    thickness = -1
+                    cv2.circle(img, landmark, radius, color, thickness, cv2.LINE_AA)
+
+
+
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        elif self.transform == "cartoon":
 
             # prepare color
             img_color = cv2.pyrDown(cv2.pyrDown(img))

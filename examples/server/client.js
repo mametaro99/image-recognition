@@ -206,7 +206,7 @@ function start() {
         constraints.video = Object.keys(videoConstraints).length ? videoConstraints : true;
     }
 
-    // Acquire media and start negociation.
+    // Acquire media and start negotiation.
 
     if (constraints.audio || constraints.video) {
         if (constraints.video) {

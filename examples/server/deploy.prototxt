@@ -1,0 +1,13 @@
+layer {
+  name: "data"
+  type: "Input"
+  top: "data"
+  input_param {
+    shape {
+      dim: 10 #バッチサイズ
+      dim: 3  #入力画像のチャンネル数
+      dim: 227  #入力画像の幅
+      dim: 227  #入力画像の高さ
+    }
+  }
+}
